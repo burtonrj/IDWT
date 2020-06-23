@@ -2,6 +2,7 @@ import mongoengine
 from .outcome import Outcome
 from .test_result import TestResult
 from .critical_care import CriticalCare
+from utilities import parse_datetime
 from Levenshtein import distance as levenshtein_distance
 
 
@@ -99,13 +100,15 @@ class Patient(mongoengine.Document):
     }
 
     def add_new_outcome(self,
-                        event_type: str,
-
+                        type: str,
+                        datetime: str,
                         component: str or None = None):
-        new_outcome = Outcome(event_type=event_type.strip(),
+        event_datetime = parse_datetime(datetime)
+        if event_datetime.get("date") is None:
+
+        new_outcome = Outcome(event_type=type.strip(),
                               )
         if component:
             new_outcome.component = component.strip()
-
 
 
