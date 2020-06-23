@@ -22,7 +22,6 @@ class GlobalConfig:
         If db_type = "sql", db_connection contains Connection object AFTER connect() method call
     """
     def __init__(self):
-        self.log = True
         self.log_path = f"{os.getcwd()}/IDWT_log_{datetime.now().date()}.txt"
         self.db_type = "nosql"
         self.db_connection = None
@@ -32,21 +31,6 @@ class GlobalConfig:
     def _type_assertation(given: object,
                           expected: type):
         assert type(given) == expected, f"Expected type {expected}, got {type(given)}"
-
-    def set_log(self, x: bool):
-        """
-        Set log parameter
-
-        Parameters
-        ----------
-        x: bool
-
-        Returns
-        -------
-        None
-        """
-        self._type_assertation(x, bool)
-        self.log = x
 
     def set_log_path(self, path: str):
         """

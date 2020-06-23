@@ -1,5 +1,5 @@
 import mongoengine
-import warnings
+from config import GlobalConfig
 from .outcome import Outcome
 from .measurement import Measurement, ComplexMeasurement, ContinuousMeasurement, DiscreteMeasurement
 from .critical_care import CriticalCare
@@ -7,7 +7,8 @@ from utilities import parse_datetime
 from Levenshtein import distance as levenshtein_distance
 
 
-def _add_if_value(document, input_variables):
+def _add_if_value(document,
+                  input_variables):
     for name, value in input_variables:
         if value is not None:
             document[name] = value
@@ -90,6 +91,9 @@ class Patient(mongoengine.Document):
         Reference to associated comorbidities, reverse delete rule = Pull (if a type of comorbidity is deleted, it will
         automatically be pulled from this list of references)
     """
+    def __init__(self, config: GlobalConfig, *args, **values):
+        super(Patient, self).__init__(*args, **values)
+        self._config = config
 
     patient_id = mongoengine.StringField(required=True, unique=True)
     age = mongoengine.IntField(required=False)
@@ -107,7 +111,9 @@ class Patient(mongoengine.Document):
         "collection": "patients"
     }
 
-    def delete(self, signal_kwargs=None, **write_concern):
+    def delete(self,
+               signal_kwargs=None,
+               **write_concern):
         """
         Method override for parent delete method. Removes all unique referenced documents for patient prior to delete.
 
@@ -123,6 +129,7 @@ class Patient(mongoengine.Document):
         -------
         None
         """
+        self._config.write_to_log(f"Deleting {self.patient_id} and associated documents...")
         for references in [self.outcomeEvents,
                            self.measurements,
                            self.criticalCare]:
@@ -131,6 +138,7 @@ class Patient(mongoengine.Document):
         super().delete(self=self,
                        signal_kwargs=signal_kwargs,
                        **write_concern)
+        self._config.write_to_log(f"Deleted patient and asssociated documents.")
 
     def add_new_outcome(self,
                         event_type: str,
@@ -178,8 +186,9 @@ class Patient(mongoengine.Document):
         # Parse datetime and check validity (None for date if invalid)
         event_datetime = parse_datetime(event_datetime)
         if event_datetime.get("date") is None:
-            raise ValueError(f"Datetime parsed when trying to generate a new outcome event for {self.patient_id}"
-                             f"was invalid!")
+            err = f"Datetime parsed when trying to generate a new outcome event for {self.patient_id} was invalid!"
+            self._config.write_to_log(err)
+            raise ValueError(err)
         # Create outcome document
         new_outcome = Outcome(patientId=self.patient_id,
                               eventType=event_type.strip(),
@@ -197,6 +206,7 @@ class Patient(mongoengine.Document):
         new_outcome = new_outcome.save()
         self.outcomeEvents.append(new_outcome)
         self.save()
+        self._config.write_to_log(f"Outcome event {new_outcome.id} for patient {self.patient_id}")
 
     def add_new_measurement(self,
                             result,
@@ -212,8 +222,10 @@ class Patient(mongoengine.Document):
         if result_datetime is not None:
             result_datetime = result_datetime(result_datetime)
             if result_datetime.get("date") is None:
-                raise ValueError(f"Datetime parsed when trying to generate a new measurement document for "
-                                 f"{self.patient_id} was invalid!")
+                err = f"Datetime parsed when trying to generate a new measurement document for " \
+                      f"{self.patient_id} was invalid!"
+                self._config.write_to_log(err)
+                raise ValueError(err)
         if ref_range:
             assert len(ref_range) == 2, "ref_range should be a list of length two, the first value is the lower " \
                                         "threshold and the second the upper"
@@ -255,6 +267,7 @@ class Patient(mongoengine.Document):
         new_result = new_result.save()
         self.measurements.append(new_result)
         self.save()
+        self._config.write_to_log(f"Measurement {new_result.id} added for patient {self.patient_id}")
 
     def get_result_by_type(self, requested_type: str):
         if requested_type == "continuous":
@@ -264,5 +277,6 @@ class Patient(mongoengine.Document):
         if requested_type == "complex":
             return [x for x in self.measurements if type(x) == ComplexMeasurement]
         raise ValueError("request_type must be one of: 'continuous', 'discrete', or 'complex'")
+
 
 
