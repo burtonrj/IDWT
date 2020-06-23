@@ -1,4 +1,5 @@
 import mongoengine
+import warnings
 from .outcome import Outcome
 from .test_result import TestResult
 from .critical_care import CriticalCare
@@ -105,7 +106,8 @@ class Patient(mongoengine.Document):
                         component: str or None = None):
         event_datetime = parse_datetime(datetime)
         if event_datetime.get("date") is None:
-
+            warnings.warn(f"Datetime parsed when trying to generate a new outcome event for {self.patient_id}"
+                          f"was invalid!")
         new_outcome = Outcome(event_type=type.strip(),
                               )
         if component:
