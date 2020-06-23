@@ -134,9 +134,12 @@ class Patient(mongoengine.Document):
                         component: str or None = None,
                         source: str or None = None,
                         source_type: str or None = None,
-                        wimd: int or None = None):
+                        wimd: int or None = None,
+                        **kwargs):
         """
-        Add a new outcome event for patient.
+        Add a new outcome event for patient. Outcome is dynamic, additional parameters can be passed in kwargs.
+        Dynamic parameters are not parsed and data type is inferred, to implement explicit support for a new
+        parameter contact burtonrj@cardiff.ac.uk
 
         Parameters
         ----------
@@ -165,15 +168,19 @@ class Patient(mongoengine.Document):
         -------
         None
         """
+        # Parse datetime and check validity (None for date if invalid)
         event_datetime = parse_datetime(event_datetime)
         if event_datetime.get("date") is None:
             warnings.warn(f"Datetime parsed when trying to generate a new outcome event for {self.patient_id}"
                           f"was invalid!")
+        # Create outcome document
         new_outcome = Outcome(event_type=event_type.strip(),
                               event_date=event_datetime.get("date"),
                               covid_status=covid_status,
                               death=death,
-                              critical_care_admission=critical_care_admission)
+                              critical_care_admission=critical_care_admission,
+                              **kwargs)
+        # Populate with optional parameters if given
         for name, value in [("component", component),
                             ("source", source),
                             ("sourceType", source_type),
