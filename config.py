@@ -143,7 +143,7 @@ class GlobalConfig:
 
     def close(self,
               alias: str = "core",
-              all: bool = True):
+              close_all: bool = True):
         """
         Close database connections. If db_type = "sql", then connection to local sqlite database is closed.
         If db_type = "no_sql", then given alias is closed, or all connections are closed if all = True.
@@ -152,7 +152,7 @@ class GlobalConfig:
         ----------
         alias: str
             alias for mongodb instance to close
-        all: bool
+        close_all: bool
             If True, all mongodb connections are closed
 
         Returns
@@ -160,7 +160,7 @@ class GlobalConfig:
          None
         """
         if self.db_type == "nosql":
-            if all:
+            if close_all:
                 for alias in self.db_alias:
                     disconnect(alias=alias)
             else:
