@@ -48,12 +48,9 @@ class Comorbidity(mongoengine.DynamicDocument):
         Returns
         -------
         int
-            2 = strings are a perfect match
             1 = strings are similar (edit_distance(x) <= edit threshold)
             0 = strings do not match
         """
-        if x == self.comorbidName:
-            return 2
         if levenshtein_distance(x, self.comorbidName) <= edit_threshold:
             return 1
         return 0
@@ -95,7 +92,7 @@ class Patient(mongoengine.Document):
         super(Patient, self).__init__(*args, **values)
         self._config = config
 
-    patient_id = mongoengine.StringField(required=True, unique=True)
+    patientId = mongoengine.StringField(required=True, unique=True)
     age = mongoengine.IntField(required=False)
     gender = mongoengine.StringField(required=True, default="U", choices=("M", "F", "U"))
     covid = mongoengine.StringField(required=True, default="U", choices=("Y", "N", "U"))
@@ -129,7 +126,7 @@ class Patient(mongoengine.Document):
         -------
         None
         """
-        self._config.write_to_log(f"Deleting {self.patient_id} and associated documents...")
+        self._config.write_to_log(f"Deleting {self.patientId} and associated documents...")
         for references in [self.outcomeEvents,
                            self.measurements,
                            self.criticalCare]:
@@ -186,11 +183,11 @@ class Patient(mongoengine.Document):
         # Parse datetime and check validity (None for date if invalid)
         event_datetime = parse_datetime(event_datetime)
         if event_datetime.get("date") is None:
-            err = f"Datetime parsed when trying to generate a new outcome event for {self.patient_id} was invalid!"
+            err = f"Datetime parsed when trying to generate a new outcome event for {self.patientId} was invalid!"
             self._config.write_to_log(err)
             raise ValueError(err)
         # Create outcome document
-        new_outcome = Outcome(patientId=self.patient_id,
+        new_outcome = Outcome(patientId=self.patientId,
                               eventType=event_type.strip(),
                               eventDate=event_datetime.get("date"),
                               covidStatus=covid_status,
@@ -206,7 +203,7 @@ class Patient(mongoengine.Document):
         new_outcome = new_outcome.save()
         self.outcomeEvents.append(new_outcome)
         self.save()
-        self._config.write_to_log(f"Outcome event {new_outcome.id} for patient {self.patient_id}")
+        self._config.write_to_log(f"Outcome event {new_outcome.id} for patient {self.patientId}")
 
     def add_new_measurement(self,
                             result,
@@ -219,18 +216,38 @@ class Patient(mongoengine.Document):
                             flags: list or None = None,
                             ref_range: list or None = None,
                             **kwargs):
+        """
+        Add a new measurement for a patient. The user should specify a measurement type using the argument 'result_type'
+
+        Parameters
+        ----------
+        result
+        result_type
+        name
+        result_datetime
+        request_source
+        result_split_char
+        notes
+        flags
+        ref_range
+        kwargs
+
+        Returns
+        -------
+
+        """
         if result_datetime is not None:
             result_datetime = result_datetime(result_datetime)
             if result_datetime.get("date") is None:
                 err = f"Datetime parsed when trying to generate a new measurement document for " \
-                      f"{self.patient_id} was invalid!"
+                      f"{self.patientId} was invalid!"
                 self._config.write_to_log(err)
                 raise ValueError(err)
         if ref_range:
             assert len(ref_range) == 2, "ref_range should be a list of length two, the first value is the lower " \
                                         "threshold and the second the upper"
         if result_type == "continuous":
-            new_result = ContinuousMeasurement(patientId=self.patient_id,
+            new_result = ContinuousMeasurement(patientId=self.patientId,
                                                name=name,
                                                result=float(result),
                                                **kwargs)
@@ -241,7 +258,7 @@ class Patient(mongoengine.Document):
                                                     ("flags", flags),
                                                     ("ref_range", ref_range)])
         elif result_type == "discrete":
-            new_result = DiscreteMeasurement(patientId=self.patient_id,
+            new_result = DiscreteMeasurement(patientId=self.patientId,
                                              name=name,
                                              result=str(result),
                                              **kwargs)
@@ -252,7 +269,7 @@ class Patient(mongoengine.Document):
                                                     ("flags", flags)])
         elif result_type == "complex":
             result = str(result).split(sep=result_split_char)
-            new_result = ComplexMeasurement(patientId=self.patient_id,
+            new_result = ComplexMeasurement(patientId=self.patientId,
                                             name=name,
                                             result=result,
                                             **kwargs)
@@ -267,7 +284,62 @@ class Patient(mongoengine.Document):
         new_result = new_result.save()
         self.measurements.append(new_result)
         self.save()
-        self._config.write_to_log(f"Measurement {new_result.id} added for patient {self.patient_id}")
+        self._config.write_to_log(f"Measurement {new_result.id} added for patient {self.patientId}")
+
+    def add_new_comorbidity(self,
+                            name: str,
+                            conflicts: str = "ignore",
+                            edit_threshold: int = 1,
+                            **kwargs):
+        existing = Comorbidity.objects(comorbidName=name)
+        if existing:
+            existing = existing.get()
+            self.comorbidities.append(existing)
+            self.save()
+            self._config.write_to_log(f"Associated patient {self.patientId} too {existing.comorbidName}")
+            return None
+        similar = [comorb for comorb in Comorbidity.objects()
+                   if comorb.similarity(x=name, edit_threshold=edit_threshold) == 1]
+        if conflicts == "ignore" or len(similar) == 0:
+            new_comorb = Comorbidity(cmorbidName=name, **kwargs)
+            self.comorbidities.append(new_comorb)
+            self.save()
+            self._config.write_to_log(f"Associated patient {self.patientId} too {name}")
+            return None
+        else:
+            if len(similar) > 1 or conflicts == "raise":
+                err = f"Multiple similar comorbitities found when entering {name} for patient {self.patientId}"
+                self._config.write_to_log(err)
+                raise ValueError(err)
+            if conflicts == "merge":
+                self.comorbidities.append(similar[0])
+                self.save()
+                self._config.write_to_log(f"Associated patient {self.patientId} too {similar[0].comorbidName}")
+        raise ValueError("conflicts argument should be one of: 'ignore', 'raise', or 'merge'")
+
+    def add_new_critical_care(self,
+                              admission_datetime: str or None = None,
+                              discharge_datetime: str or None = None,
+                              request_location: str or None = None,
+                              icu_days: float or None = None,
+                              ventilated: str = "U",
+                              covid_status: str = "U",
+                              **kwargs):
+
+        admission_datetime = parse_datetime(admission_datetime)
+        discharge_datetime = parse_datetime(discharge_datetime)
+        new_event = CriticalCare(patientId=self.patientId, **kwargs)
+        new_event = _add_if_value(new_event, [("admissionDate", admission_datetime.get("date")),
+                                              ("admissionTime", admission_datetime.get("time")),
+                                              ("dischargeDate", discharge_datetime.get("date")),
+                                              ("dischargeTime", discharge_datetime.get("time")),
+                                              ("requestLocation", request_location),
+                                              ("icuDays", icu_days),
+                                              ("ventilated", ventilated),
+                                              ("covidStatis", covid_status)])
+        self.criticalCare.append(new_event)
+        self.save()
+        self._config.write_to_log(f"New critical care event added for patient {self.patientId}")
 
     def get_result_by_type(self, requested_type: str):
         if requested_type == "continuous":
