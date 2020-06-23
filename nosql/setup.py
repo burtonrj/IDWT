@@ -2,6 +2,7 @@ import mongoengine
 
 
 def global_init(database_name: str,
+                alias: str = "core",
                 **kwargs) -> None:
     """
     Global initializer for mongogengine ORM. See mongoengine.register_connection for additional keyword arguments and
@@ -13,8 +14,10 @@ def global_init(database_name: str,
     -----------
     database_name: str
         name of database to establish connection with
+    alias: str, (default="core")
+        alias to use, only required if connecting to multiple databases
     Returns
     --------
     None
     """
-    mongoengine.register_connection(alias='core', name=database_name, **kwargs)
+    mongoengine.register_connection(alias=alias, name=database_name, **kwargs)
