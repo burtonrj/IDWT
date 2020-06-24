@@ -92,7 +92,7 @@ class Patient(mongoengine.Document):
         super(Patient, self).__init__(*args, **values)
         self._config = config
 
-    patientId = mongoengine.StringField(required=True, unique=True)
+    patientId = mongoengine.StringField(required=True, unique=True, primary_key=True)
     age = mongoengine.IntField(required=False)
     gender = mongoengine.StringField(default="U", choices=("M", "F", "U"))
     covid = mongoengine.StringField(default="U", choices=("Y", "N", "U"))
