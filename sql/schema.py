@@ -2,7 +2,15 @@ import sqlite3
 import os
 
 
-def schema():
+def _schema():
+    """
+    Generates list of SQL queries for generating standard tables for sqlite3 database
+
+    Returns
+    -------
+    list
+        List of string values containing SQL queries for each table
+    """
     patients = """
         CREATE TABLE [IF NOT EXISTS] Patients(
         patient_id TEXT PRIMARY KEY,
@@ -67,6 +75,22 @@ def schema():
 def create_database(db_path: str,
                     overwrite: bool = False,
                     **kwargs):
+    """
+    Generate a new local unpopulated SQLite database following the standard schema for IDWT project
+
+    Parameters
+    ----------
+    db_path: str
+        Path where new database file is save
+    overwrite: bool
+        How to handle existing database file. If True and database file exists, database will be deleted and replaced
+        witn new unpopulated data
+    kwargs
+        Additional keyword arguments to pass to sqlite3.conntect() call
+    Returns
+    -------
+    None
+    """
     if os.path.exists(db_path):
         if overwrite:
             os.remove(db_path)
@@ -75,7 +99,7 @@ def create_database(db_path: str,
                              "a new database, otherwise specify a new path")
     conn = sqlite3.connect(db_path, **kwargs)
     curr = conn.cursor()
-    for x in schema():
+    for x in _schema():
         curr.execute(x)
     conn.commit()
     conn.close()
