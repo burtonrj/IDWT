@@ -95,7 +95,7 @@ class Patient(mongoengine.Document):
     patientId = mongoengine.StringField(required=True, unique=True, primary_key=True)
     age = mongoengine.IntField(required=False)
     gender = mongoengine.StringField(default="U", choices=("M", "F", "U"))
-    covid = mongoengine.StringField(default="U", choices=("Y", "N", "U"))
+    covid = mongoengine.StringField(default="U", choices=("P", "N", "U"))
     died = mongoengine.IntField(default=0, choices=(1, 0))
     criticalCareStay = mongoengine.IntField(default=0, choices=(1, 0))
     outcomeEvents = mongoengine.ListField(mongoengine.ReferenceField(Outcome, reverse_delete_rule=4))
