@@ -28,7 +28,40 @@ def schema():
             wimd INTEGER 
             );
         """
-    return [patients, outcome]
+    measurements = """
+        CREATE TABLE [IF NOT EXISTS] Measurements(
+        patient_id TEXT PRIMARY KEY,
+        result_name TEXT NOT NULL,
+        result_date TEXT,
+        result_time REAL,
+        request_source TEXT,
+        notes TEXT,
+        flags TEXT
+        );
+    """
+    critical_care = """
+        CREATE TABLE [IF NOT EXISTS] CriticalCare(
+        patient_id TEXT PRIMARY KEY,
+        admission_date TEXT,
+        admission_time REAL,
+        discharge_date TEXT,
+        discharge_time REAL,
+        request_location TEXT,
+        icu_days INTEGER,
+        ventilated TEXT DEFAULT "U",
+        covid_status TEXT DEFAULT "U"
+        );
+    """
+    comorbidities = """
+        CREATE TABLE [IF NOT EXISTS] Comorbidities(
+        patient_id TEXT PRIMARY KEY,
+        comorbs TEXT
+        );
+    """
+    comorb_key = """CREATE TABLE [IF NOT EXISTS] ComorbKey(
+    comorb_name TEXT PRIMARY KEY
+    );"""
+    return [patients, outcome, measurements, critical_care, comorbidities, comorb_key]
 
 
 def create_database(db_path: str,
