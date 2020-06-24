@@ -2,6 +2,9 @@ import mongoengine
 
 
 class CriticalCare(mongoengine.DynamicDocument):
+    """
+    Critical care events
+    """
     patientId = mongoengine.StringField(required=True)
     admissionDate = mongoengine.DateField(required=False)
     admissionTime = mongoengine.FloatField(required=False)

@@ -2,6 +2,9 @@ import mongoengine
 
 
 class Measurement(mongoengine.DynamicDocument):
+    """
+    Base class for measurements.
+    """
     patientId = mongoengine.StringField(required=True)
     name = mongoengine.StringField(required=True)
     date = mongoengine.DateField(required=False)

@@ -341,7 +341,20 @@ class Patient(mongoengine.Document):
         self.save()
         self._config.write_to_log(f"New critical care event added for patient {self.patientId}")
 
-    def get_result_by_type(self, requested_type: str):
+    def get_measurement_by_type(self, requested_type: str):
+        """
+        Filter measurements by data type, either continuous, discrete or complex
+
+        Parameters
+        ----------
+        requested_type: str
+            'continuous', 'discrete' or 'complex'
+
+        Returns
+        -------
+        list
+            List of filtered Measurement objects
+        """
         if requested_type == "continuous":
             return [x for x in self.measurements if type(x) == ContinuousMeasurement]
         if requested_type == "discrete":
