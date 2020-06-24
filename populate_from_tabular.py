@@ -1,4 +1,4 @@
-from .patient import Patient
+from nosql.patient import Patient
 from config import GlobalConfig
 from collections import defaultdict
 import pandas as pd
@@ -6,7 +6,7 @@ import os
 import re
 
 
-class PopulateUpdate:
+class Populate:
     def __init__(self,
                  config: GlobalConfig,
                  target_directory: str,
