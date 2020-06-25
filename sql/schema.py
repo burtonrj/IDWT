@@ -40,6 +40,8 @@ def _schema():
         CREATE TABLE [IF NOT EXISTS] Measurements(
         patient_id TEXT PRIMARY KEY,
         result_name TEXT NOT NULL,
+        result_type TEXT NOT NULL,
+        result TEXT NOT NULL,
         result_date TEXT,
         result_time REAL,
         request_source TEXT,
