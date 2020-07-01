@@ -598,6 +598,14 @@ class Populate:
                 self._config.db_connection.commit()
                 self._config.write_to_log(f"New patient {pt_id} written to patients table")
 
+    def _load_and_concat(self, filename:str):
+
+        files = {name: properties for name, properties in self._files.items()
+                 if filename.lower() in name.lower()}
+        return pd.concat([self._load_dataframe(path=properties.get("path"),
+                                               filetype=properties.get("type"))
+                          for properties in files.values()], ignore_index=True)
+
     def add_outcome_events(self,
                            filename: str,
                            mappings: dict):
@@ -618,11 +626,7 @@ class Populate:
         -------
         None
         """
-        outcome_files = {name: properties for name, properties in self._files.items()
-                         if filename.lower() in name.lower()}
-        outcomes = pd.concat([self._load_dataframe(path=properties.get("path"),
-                                                   filetype=properties.get("type"))
-                              for properties in outcome_files.values()], ignore_index=True)
+        outcomes = self._load_and_concat(filename=filename)
         patient_ids = outcomes[self._id_column].values
         self._assert_patients_added(patient_ids=patient_ids)
         if self._config.db_type == "nosql":
@@ -649,9 +653,13 @@ class Populate:
                             con=self._config.db_connection,
                             if_exists="append")
 
-    def add_measurements(self):
-        # TODO load and concat results files
-        # TODO assert add_patients
+    def add_measurements(self,
+                         filename: str,
+                         result_datetime: str or list):
+        measurements = self._load_and_concat(filename=filename)
+        self._assert_patients_added(measurements[self._id_column].values)
+        if self._config.db_type == "nosql":
+            pass
         # TODO if nosql - for each measurement assess the type and add_new_measurement
         # TODO if sql - for each measurement assess the type and add_new_measurement
         pass
