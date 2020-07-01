@@ -1,5 +1,6 @@
 from ..nosql.patient import Comorbidity
 from mongoengine import connect, disconnect
+from config import GlobalConfig
 import unittest
 
 

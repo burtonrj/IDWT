@@ -1,6 +1,7 @@
 from nosql.setup import global_init
 from mongoengine.connection import disconnect
 from datetime import datetime
+from warnings import warn
 import sqlite3
 import os
 
@@ -122,7 +123,8 @@ class GlobalConfig:
                         **kwargs)
             self.db_alias.append(alias)
         else:
-            assert os.path.exists(db_name), f"Mode = SQL; could not locate SQLite database with path {db_name}"
+            warn(f"Mode = SQL; could not locate SQLite database with path {db_name}, new database file will be "
+                 f"generated")
             self.db_connection = sqlite3.connect(db_name, **kwargs)
 
     def close(self,
@@ -147,10 +149,13 @@ class GlobalConfig:
             if close_all:
                 for alias in self.db_alias:
                     disconnect(alias=alias)
+                self.db_alias = list()
             else:
+                assert alias in self.db_alias, "No active connections with given alias"
                 disconnect(alias=alias)
+                self.db_alias = [x for x in self.db_alias if x != alias]
         else:
-            assert self.db_connection
-            self.db_connection.close()
+            if self.db_connection is not None:
+                self.db_connection.close()
 
 
