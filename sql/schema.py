@@ -29,6 +29,7 @@ def _schema():
             event_date TEXT NOT NULL,
             event_time REAL,
             covid_status TEXT DEFAULT "U",
+            death TEXT DEFAULT "U",
             critical_care_admission INTEGER DEFAULT 0,
             source TEXT,
             source_type TEXT,

@@ -1,6 +1,9 @@
+from pandas import DataFrame
+
 from nosql.patient import Patient
 from config import GlobalConfig
 from collections import defaultdict
+from utilities import parse_datetime
 import pandas as pd
 import os
 import re
@@ -598,7 +601,7 @@ class Populate:
                 self._config.db_connection.commit()
                 self._config.write_to_log(f"New patient {pt_id} written to patients table")
 
-    def _load_and_concat(self, filename:str):
+    def _load_and_concat(self, filename: str):
 
         files = {name: properties for name, properties in self._files.items()
                  if filename.lower() in name.lower()}
@@ -606,21 +609,55 @@ class Populate:
                                                filetype=properties.get("type"))
                           for properties in files.values()], ignore_index=True)
 
+    @staticmethod
+    def _remove_columns(df: pd.DataFrame,
+                        exclude: list or None):
+        if exclude is None:
+            return df
+        assert all([x in df.columns for x in exclude]), "One or more given columns to exclude do not exist in " \
+                                                        "target file(s)"
+        return df.drop(exclude, axis=1)
+
+    def _add_to_patient(self,
+                        row: pd.Series,
+                        mappings: dict,
+                        method_: str):
+        pt = Patient.objects(patientId=str(row[self._id_column])).get()
+        values = {key: row[column_name] for key, column_name in mappings.items()}
+        getattr(pt, method_)(**values)
+
+    @staticmethod
+    def _parse_datetime_columns(df: pd.DataFrame,
+                                datetime_cols: list or str,
+                                prefix: str or None = None):
+        colname = "datetime"
+        if prefix is not None:
+            colname = "_".join([prefix, colname])
+        if type(datetime_cols) == list:
+            df[colname] = df[datetime_cols].apply(lambda x: " ".join([x[c] for c in datetime_cols]))
+        else:
+            df[colname] = df[datetime_cols]
+        return df.drop(datetime_cols, axis=1)
+
     def add_outcome_events(self,
+                           event_datetime: str or list,
                            filename: str,
-                           mappings: dict):
+                           mappings: dict,
+                           exclude_columns: list or None = None):
         """
         For each patient in the target files, add outcome events to database using target files that contain the
         keyword specified in filename
 
         Parameters
         ----------
+        event_datetime: str
         filename: str
             Keyword to use for capturing files that contain outcome events
         mappings: dict
             Column mappings, specific key values are required and should map to the relevant column within the
             target file(s). Expected keys: event_type, event_datetime, covid_status, death, critical_care_admission
             Additional optional keys: component, source_type, source, wimd
+        exclude_columns: list
 
         Returns
         -------
@@ -628,41 +665,85 @@ class Populate:
         """
         outcomes = self._load_and_concat(filename=filename)
         patient_ids = outcomes[self._id_column].values
+        outcomes = self._remove_columns(outcomes, exclude_columns)
         self._assert_patients_added(patient_ids=patient_ids)
+        assert "event_type" in mappings.keys(), "event_type not found in mappings"
+        if type(event_datetime) == list:
+            outcomes = self._parse_datetime_columns(outcomes, event_datetime, prefix="event")
+            mappings["event_datetime"] = "event_datetime"
         if self._config.db_type == "nosql":
-            try:
-                for pt_id in patient_ids:
-                    patient = Patient.objects(patientId=str(pt_id)).get()
-                    patient.add_new_outcome(event_type=mappings["event_type"],
-                                            event_datetime=mappings["event_datetime"],
-                                            covid_status=mappings["covid_status"],
-                                            death=mappings["death"],
-                                            critical_care_admission=mappings["critical_care_admission"],
-                                            component=mappings.get("component"),
-                                            source_type=mappings.get("source_type"),
-                                            source=mappings.get("source"),
-                                            wimd=mappings.get("wimd"))
-            except KeyError:
-                raise KeyError("Mappings invalid, must contain keys: event_type, event_datetime, covid_status, "
-                               "death, critical_care_admission")
+            outcomes.apply(lambda x: self._add_to_patient(row=x, mappings=mappings, method_="add_new_outcome"))
         else:
-            assert "patient_id" in mappings.keys(), "patient_id missing from mapping keys"
+            mappings["patient_id"] = self._id_column
+            outcomes["event_date"] = outcomes["event_datetime"].apply(lambda x: parse_datetime(x)).get("date")
+            outcomes["event_time"] = outcomes["event_datetime"].apply(lambda x: parse_datetime(x)).get("time")
+            outcomes.drop("event_datetime", axis=1, inplace=True)
             mappings = {value: key for key, value in mappings.items()}
             outcomes.rename(columns=mappings)
             outcomes.to_sql(name="Outcome",
                             con=self._config.db_connection,
                             if_exists="append")
 
+    def _add_measurement(self,
+                         row: pd.Series,
+                         results_columns: list,
+                         results_types: list,
+                         result_datetime: str or list,
+                         ref_ranges: list or None = None,
+                         request_source: str or None = None,
+                         complex_result_split_char: str = " "):
+        if type(result_datetime) == list:
+            result_datetime = " ".join([row[x] for x in result_datetime])
+        else:
+            result_datetime = row[result_datetime]
+        request_source = row[request_source]
+        for i, result in enumerate(results_columns):
+            ref = None
+            if len(ref_ranges) > i:
+                ref = ref_ranges[i]
+            result_type = results_types[i]
+            if self._config.db_type == "nosql":
+                pt = Patient.objects(patientId=str(row[self._id_column])).get()
+                pt.add_new_measurements(result=row[result],
+                                        result_type=result_type,
+                                        name=result,
+                                        result_datetime=result_datetime,
+                                        request_source=request_source,
+                                        result_split_char=complex_result_split_char,
+                                        ref_range=ref)
+            else:
+                result_datetime = parse_datetime(result_datetime)
+                record = dict(patient_id=row[self._id_column],
+                              result_name=result,
+                              result_type=result_type,
+                              result=row[result],
+                              result_date=result_datetime.get("date"),
+                              result_time=result_datetime.get("time"),
+                              request_source=request_source)
+
+                pd.DataFrame(record).to_sql(name="Measurements",
+                                            con=self._config.db_connection,
+                                            if_exists="append")
+
     def add_measurements(self,
                          filename: str,
-                         result_datetime: str or list):
+                         result_datetime: str or list,
+                         results_columns: list,
+                         results_types: list,
+                         ref_ranges: list or None = None,
+                         request_source: str or None = None,
+                         complex_result_split_char: str = " "):
+        assert len(results_columns) == len(results_types), "Length of results_columns should equal length of " \
+                                                           "result_types"
         measurements = self._load_and_concat(filename=filename)
         self._assert_patients_added(measurements[self._id_column].values)
-        if self._config.db_type == "nosql":
-            pass
-        # TODO if nosql - for each measurement assess the type and add_new_measurement
-        # TODO if sql - for each measurement assess the type and add_new_measurement
-        pass
+        measurements.apply(lambda x: self._add_measurement(row=x,
+                                                           result_datetime=result_datetime,
+                                                           results_columns=results_columns,
+                                                           results_types=results_types,
+                                                           ref_ranges=ref_ranges,
+                                                           request_source=request_source,
+                                                           complex_result_split_char=complex_result_split_char))
 
     def add_critical_care_events(self):
         pass

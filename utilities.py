@@ -29,4 +29,4 @@ def parse_datetime(datetime: str) -> dict:
     result["date"] = f"{datetime.day}/{datetime.month}/{datetime.year}"
     if "time" not in result.keys():
         result["time"] = (datetime.hour * 60) + datetime.minute
-    return datetime
+    return result
