@@ -22,7 +22,7 @@ def _schema():
         );
     """
     outcome = """
-            CREATE TABLE [IF NOT EXISTS] Outcome(
+            CREATE TABLE [IF NOT EXISTS] Events(
             patient_id TEXT PRIMARY KEY,
             component TEXT,
             event_type TEXT NOT NULL,
@@ -46,6 +46,7 @@ def _schema():
         result_date TEXT,
         result_time REAL,
         request_source TEXT,
+        ref_range TEXT,
         notes TEXT,
         flags TEXT
         );

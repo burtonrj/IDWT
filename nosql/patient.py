@@ -1,6 +1,6 @@
 import mongoengine
 from config import GlobalConfig
-from .outcome import Outcome
+from .outcome import Event
 from .measurement import Measurement, ComplexMeasurement, ContinuousMeasurement, DiscreteMeasurement
 from .critical_care import CriticalCare
 from utilities import parse_datetime
@@ -98,7 +98,7 @@ class Patient(mongoengine.Document):
     covid = mongoengine.StringField(default="U", choices=("P", "N", "U"))
     died = mongoengine.IntField(default=0, choices=(1, 0))
     criticalCareStay = mongoengine.IntField(default=0, choices=(1, 0))
-    outcomeEvents = mongoengine.ListField(mongoengine.ReferenceField(Outcome, reverse_delete_rule=4))
+    outcomeEvents = mongoengine.ListField(mongoengine.ReferenceField(Event, reverse_delete_rule=4))
     measurements = mongoengine.ListField(mongoengine.ReferenceField(Measurement, reverse_delete_rule=4))
     criticalCare = mongoengine.ListField(mongoengine.ReferenceField(CriticalCare, reverse_delete_rule=4))
     comorbidities = mongoengine.ListField(mongoengine.ReferenceField(Comorbidity, reverse_delete_rule=4))
@@ -137,17 +137,17 @@ class Patient(mongoengine.Document):
                        **write_concern)
         self._config.write_to_log(f"Deleted patient and asssociated documents.")
 
-    def add_new_outcome(self,
-                        event_type: str,
-                        event_datetime: str,
-                        covid_status: str = "U",
-                        death: int = 0,
-                        critical_care_admission: int = 0,
-                        component: str or None = None,
-                        source: str or None = None,
-                        source_type: str or None = None,
-                        wimd: int or None = None,
-                        **kwargs):
+    def add_new_event(self,
+                      event_type: str,
+                      event_datetime: str,
+                      covid_status: str = "U",
+                      death: int = 0,
+                      critical_care_admission: int = 0,
+                      component: str or None = None,
+                      source: str or None = None,
+                      source_type: str or None = None,
+                      wimd: int or None = None,
+                      **kwargs):
         """
         Add a new outcome event for patient. Outcome is dynamic, additional parameters can be passed in kwargs.
         Dynamic parameters are not parsed and data type is inferred, to implement explicit support for a new
@@ -187,13 +187,13 @@ class Patient(mongoengine.Document):
             self._config.write_to_log(err)
             raise ValueError(err)
         # Create outcome document
-        new_outcome = Outcome(patientId=self.patientId,
-                              eventType=event_type.strip(),
-                              eventDate=event_datetime.get("date"),
-                              covidStatus=covid_status,
-                              death=death,
-                              criticalCareAdmission=critical_care_admission,
-                              **kwargs)
+        new_outcome = Event(patientId=self.patientId,
+                            eventType=event_type.strip(),
+                            eventDate=event_datetime.get("date"),
+                            covidStatus=covid_status,
+                            death=death,
+                            criticalCareAdmission=critical_care_admission,
+                            **kwargs)
         # Populate with optional parameters if given
         new_outcome = _add_if_value(new_outcome, [("component", component),
                                                   ("source", source),

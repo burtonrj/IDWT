@@ -1,7 +1,7 @@
 import mongoengine
 
 
-class Outcome(mongoengine.DynamicDocument):
+class Event(mongoengine.DynamicDocument):
     """
     Document object for a outcome event. All records will relate to a unique Patient via "parent-referencing".
     Outcome events log when a change has happened during a patients stay and are "time-series" in nature.

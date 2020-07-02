@@ -639,11 +639,11 @@ class Populate:
             df[colname] = df[datetime_cols]
         return df.drop(datetime_cols, axis=1)
 
-    def add_outcome_events(self,
-                           event_datetime: str or list,
-                           filename: str,
-                           mappings: dict,
-                           exclude_columns: list or None = None):
+    def add_events(self,
+                   event_datetime: str or list,
+                   filename: str,
+                   mappings: dict,
+                   exclude_columns: list or None = None):
         """
         For each patient in the target files, add outcome events to database using target files that contain the
         keyword specified in filename
@@ -663,24 +663,24 @@ class Populate:
         -------
         None
         """
-        outcomes = self._load_and_concat(filename=filename)
-        patient_ids = outcomes[self._id_column].values
-        outcomes = self._remove_columns(outcomes, exclude_columns)
+        events = self._load_and_concat(filename=filename)
+        patient_ids = events[self._id_column].values
+        events = self._remove_columns(events, exclude_columns)
         self._assert_patients_added(patient_ids=patient_ids)
         assert "event_type" in mappings.keys(), "event_type not found in mappings"
         if type(event_datetime) == list:
-            outcomes = self._parse_datetime_columns(outcomes, event_datetime, prefix="event")
+            events = self._parse_datetime_columns(events, event_datetime, prefix="event")
             mappings["event_datetime"] = "event_datetime"
         if self._config.db_type == "nosql":
-            outcomes.apply(lambda x: self._add_to_patient(row=x, mappings=mappings, method_="add_new_outcome"))
+            events.apply(lambda x: self._add_to_patient(row=x, mappings=mappings, method_="add_new_outcome"))
         else:
             mappings["patient_id"] = self._id_column
-            outcomes["event_date"] = outcomes["event_datetime"].apply(lambda x: parse_datetime(x)).get("date")
-            outcomes["event_time"] = outcomes["event_datetime"].apply(lambda x: parse_datetime(x)).get("time")
-            outcomes.drop("event_datetime", axis=1, inplace=True)
+            events["event_date"] = events["event_datetime"].apply(lambda x: parse_datetime(x)).get("date")
+            events["event_time"] = events["event_datetime"].apply(lambda x: parse_datetime(x)).get("time")
+            events.drop("event_datetime", axis=1, inplace=True)
             mappings = {value: key for key, value in mappings.items()}
-            outcomes.rename(columns=mappings)
-            outcomes.to_sql(name="Outcome",
+            events.rename(columns=mappings)
+            events.to_sql(name="Events",
                             con=self._config.db_connection,
                             if_exists="append")
 
@@ -701,11 +701,10 @@ class Populate:
             ref = None
             if len(ref_ranges) > i:
                 ref = ref_ranges[i]
-            result_type = results_types[i]
             if self._config.db_type == "nosql":
                 pt = Patient.objects(patientId=str(row[self._id_column])).get()
                 pt.add_new_measurements(result=row[result],
-                                        result_type=result_type,
+                                        result_type=results_types[i],
                                         name=result,
                                         result_datetime=result_datetime,
                                         request_source=request_source,
@@ -715,11 +714,12 @@ class Populate:
                 result_datetime = parse_datetime(result_datetime)
                 record = dict(patient_id=row[self._id_column],
                               result_name=result,
-                              result_type=result_type,
+                              result_type=results_types[i],
                               result=row[result],
                               result_date=result_datetime.get("date"),
                               result_time=result_datetime.get("time"),
-                              request_source=request_source)
+                              request_source=request_source,
+                              ref_range = ref)
 
                 pd.DataFrame(record).to_sql(name="Measurements",
                                             con=self._config.db_connection,
@@ -744,9 +744,6 @@ class Populate:
                                                            ref_ranges=ref_ranges,
                                                            request_source=request_source,
                                                            complex_result_split_char=complex_result_split_char))
-
-    def add_critical_care_events(self):
-        pass
 
     def add_comorbidities(self):
         pass
