@@ -21,7 +21,7 @@ def _schema():
         criticalCareStay INTEGER DEFAULT 0
         );
     """
-    outcome = """
+    event = """
             CREATE TABLE [IF NOT EXISTS] Events(
             patient_id TEXT PRIMARY KEY,
             component TEXT,
@@ -67,13 +67,13 @@ def _schema():
     comorbidities = """
         CREATE TABLE [IF NOT EXISTS] Comorbidities(
         patient_id TEXT PRIMARY KEY,
-        comorbs TEXT
+        comorb_name TEXT
         );
     """
     comorb_key = """CREATE TABLE [IF NOT EXISTS] ComorbKey(
     comorb_name TEXT PRIMARY KEY
     );"""
-    return [patients, outcome, measurements, critical_care, comorbidities, comorb_key]
+    return [patients, event, measurements, critical_care, comorbidities, comorb_key]
 
 
 def create_database(db_path: str,

@@ -1,6 +1,6 @@
 import mongoengine
 from config import GlobalConfig
-from .outcome import Event
+from .event import Event
 from .measurement import Measurement, ComplexMeasurement, ContinuousMeasurement, DiscreteMeasurement
 from .critical_care import CriticalCare
 from utilities import parse_datetime

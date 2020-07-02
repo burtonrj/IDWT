@@ -1,9 +1,9 @@
-from pandas import DataFrame
-
+from Levenshtein import distance as levenshtein_distance
 from nosql.patient import Patient
 from config import GlobalConfig
 from collections import defaultdict
 from utilities import parse_datetime
+from warnings import warn
 import pandas as pd
 import os
 import re
@@ -39,6 +39,11 @@ class Populate:
         self._id_column = self._check_id_column(id_column=id_column)
         self._patients = self._patient_indexes()
         self.conflicts = conflicts
+        if self._config.db_type == "sql":
+            if self._config.db_type == "nosql":
+                curr = self._config.db_connection.cursor()
+                self._comorb_keys = curr.execute("SELECT comorb_name FROM ComorbKey;").fetchall()
+
 
     @property
     def conflicts(self):
@@ -745,6 +750,59 @@ class Populate:
                                                            request_source=request_source,
                                                            complex_result_split_char=complex_result_split_char))
 
-    def add_comorbidities(self):
-        pass
+    def add_comorbidities(self,
+                          filename: str,
+                          exclude_columns: str or None = None,
+                          conflicts: str = "ignore",
+                          edit_threshold: int = 2):
+        comorbs = self._load_and_concat(filename=filename)
+        self._assert_patients_added(comorbs[self._id_column].values)
+        comorbs = self._remove_columns(comorbs, exclude_columns).melt(id_vars=self._id_column,
+                                                                      value_name="status",
+                                                                      var_name="comorb_name")
+        comorbs = comorbs[comorbs.status  == 1].drop_duplicates()
+        if comorbs.shape[0]:
+            warn("No positive status for all comorbidities. This is unusual and should be checked. No data entry performed")
+            return
+        if self._config.db_type == "nosql":
+            comorbs.apply(lambda x: Patient.objects(patientId=x[self._id_column]).get().add_new_comorbidity(name=x,
+                                                                                                            conflicts=conflicts,
+                                                                                                            edit_threshold=edit_threshold),
+                          axis=1)
+        else:
+            comorbs.rename({self._id_column: "patient_id"}, axis=1, inplace=True)
+            comorbs = self._parse_comorbs_sql(comorbs, conflicts, edit_threshold)
+            comorbs.to_sql(name="Comorbidities",
+                           con=self._config.db_connection,
+                           if_exists="append")
+
+    def _parse_comorbs_sql(self,
+                           comorbs: pd.DataFrame,
+                           conflicts: str,
+                           edit_threshold: int):
+        for x in comorbs.comorb_name.unique():
+            if x not in self._comorb_keys:
+                similar = list(filter(lambda k: levenshtein_distance(k, x) >= edit_threshold,
+                                      self._comorb_keys))
+                if len(similar) > 1:
+                    err = f"{x} conflicts with more than one comorbidity keys: {similar}"
+                    if conflicts == "raise":
+                        raise ValueError(err)
+                    warn(f"{err}; ignoring conflict, comorbiditiy {x} will be skipped")
+                    comorbs = comorbs[comorbs.comorb_name != x]
+                elif len(similar) == 1:
+                    err = f"{x} conflicts with existing comorbidity {similar[0]}"
+                    if conflicts == "merge":
+                        warn(f"{err}; merging conflict with existing value")
+                        comorbs["comorb_name"] = comorbs["comorb_name"].apply(lambda x: similar[0])
+                    elif conflicts == "raise":
+                        raise ValueError(err)
+                    else:
+                        warn(f"{err}; ignoring conflict, comorbiditiy {x} will be skipped")
+                else:
+                    self._comorb_keys.append(x)
+                    curr = self._config.db_connection.cursor()
+                    curr.execute("INSERT INTO ComorbKey (comorb_name) VALUES (?)", x)
+                    self._config.db_connection.commit()
+        return comorbs
 
