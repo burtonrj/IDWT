@@ -123,8 +123,8 @@ class GlobalConfig:
                         **kwargs)
             self.db_alias.append(alias)
         else:
-            warn(f"Mode = SQL; could not locate SQLite database with path {db_name}, new database file will be "
-                 f"generated")
+            if not os.path.isfile(db_name):
+                raise ValueError(f"Mode = SQL; could not locate SQLite database with path {db_name}. Run ProjectBevan.sql.schema.create_database")
             self.db_connection = sqlite3.connect(db_name, **kwargs)
 
     def close(self,
@@ -157,5 +157,6 @@ class GlobalConfig:
         else:
             if self.db_connection is not None:
                 self.db_connection.close()
+                self.db_connection = None
 
 

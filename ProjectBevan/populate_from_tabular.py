@@ -1,8 +1,8 @@
+from .nosql.patient import Patient
+from .config import GlobalConfig
+from .utilities import parse_datetime, progress_bar, verbose_print
 from Levenshtein import distance as levenshtein_distance
-from ProjectBevan.nosql.patient import Patient
-from config import GlobalConfig
 from collections import defaultdict
-from utilities import parse_datetime
 from warnings import warn
 import pandas as pd
 import os
@@ -32,8 +32,11 @@ class Populate:
                  config: GlobalConfig,
                  target_directory: str,
                  id_column: str,
-                 conflicts: str = "raise"):
+                 conflicts: str = "raise",
+                 verbose: bool = True):
         assert os.path.isdir(target_directory), f"Target directory {target_directory} does not exist!"
+        self._verbose = verbose
+        self._vprint = verbose_print(verbose)
         self._config = config
         self._files = self._parse_files(target_directory)
         self._id_column = self._check_id_column(id_column=id_column)
@@ -107,15 +110,16 @@ class Populate:
         """
         files = dict()
         for filename in os.listdir(target_directory):
-            if filename.endswith(".csv"):
+            if filename.lower().endswith(".csv"):
                 files[filename] = {"path": os.path.join(target_directory, filename),
                                    "type": "csv"}
-            if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            if filename.lower().endswith(".xlsx") or filename.endswith(".xls"):
                 files[filename] = {"path": os.path.join(target_directory, filename),
                                    "type": "excel"}
         return files
 
-    def _check_id_column(self, id_column: str) -> str:
+    def _check_id_column(self,
+                         id_column: str) -> str:
         """
         Check that the designated identifier column is present in all files in the target directory. If a file lacks
         this column, an AssertionError will be raised
@@ -130,7 +134,8 @@ class Populate:
         str
             Name of identifier column
         """
-        for name, properties in self._files.items():
+        self._vprint("----- Checking patient identifier column -----")
+        for name, properties in progress_bar(self._files.items(), verbose=self._verbose):
             temp_df = self._load_dataframe(properties.get("path"),
                                            filetype=properties.get("type"),
                                            nrows=3)
@@ -172,7 +177,8 @@ class Populate:
         """
         # Search through every file and generate a dictionary of unique patient indexes
         patients = defaultdict(dict)
-        for name, properties in self._files.items():
+        self._vprint("----- Caching patient identifiers -----")
+        for name, properties in progress_bar(self._files.items(), verbose=self._verbose):
             pt_ids = self._load_dataframe(path=properties.get("path"),
                                           filetype=properties.get("type"),
                                           usecols=[self._id_column])[self._id_column]
@@ -195,11 +201,11 @@ class Populate:
         """
         patient_idx = self._patients.get(patient_id)
         for name, properties in self._files.items():
+            if name not in patient_idx.keys():
+                continue
             df = self._load_dataframe(path=properties.get("path"),
                                       filetype=properties.get("type"),
                                       index=patient_idx.get(name))
-            if df.shape[0] == 0:
-                continue
             yield name, df
 
     def _pt_search_multi(self,
@@ -473,6 +479,65 @@ class Populate:
             for pt_id in patient_ids:
                 curr.execute("""SELECT patient_id FROM patients WHERE patient_id=?""", pt_id)
                 assert len(curr.fetchall()) > 0, f"{pt_id} missing from database, have you called add_patients?"
+
+    def age_correction(self,
+                       correction: callable,
+                       column_search_terms: str or None = None,
+                       new_path: str or None = None):
+
+        if column_search_terms is None:
+            column_search_terms = ["^age$", "^age[.-_]+", "[.-_]+age"]
+        self._vprint("----- Correcting age values -----")
+        self._vprint("...fetch age values")
+        age_values = dict()
+        for patient_id in progress_bar(self._patients.keys(), verbose=self._verbose):
+            all_values = list()
+            for filename, df in self._load_pt_dataframe(patient_id=patient_id):
+                columns = self._filter_columns(columns=df.columns,
+                                               regex_terms=column_search_terms)
+                if len(columns) != 1:
+                    raise ValueError(f"Multiple age columns found {columns}")
+                file_values = df[columns].values.flatten()
+                if len(file_values) == 0:
+                    continue
+                all_values.append(list(set(file_values)))
+            age_values[patient_id] = [x for y in all_values for x in y]
+
+        age_values = {pt_id: correction(ages) for pt_id, ages in age_values.items()}
+        self._vprint("...correct age values")
+
+        for filename, properties in self._files.items():
+            if new_path is not None:
+                path = os.path.join(new_path, filename)
+            else:
+                path = properties.get("path")
+            if properties.get("type") == "csv":
+                df = pd.read_csv(path)
+            else:
+                df = pd.read_excel(path)
+            df.apply(lambda x: self._update_age(x, age_values=age_values, column_search_terms=column_search_terms),
+                     axis=0,
+                     inplace=True)
+            if properties.get("type") == "csv":
+                df.to_csv(path)
+            else:
+                df.to_excel(path)
+
+        self._vprint("----- Complete! -----")
+
+    def _update_age(self,
+                    x: pd.Series,
+                    age_values: dict,
+                    column_search_terms: list or None = None):
+        if column_search_terms is None:
+            column_search_terms = ["^age$", "^age[.-_]+", "[.-_]+age"]
+        update_age = age_values.get(x[self._id_column])
+        assert update_age is not None, f"No age value found for {x[self._id_column]}"
+        columns = list(filter(lambda i: any([re.match(p, i, flags=re.IGNORECASE) for p in column_search_terms]), x.index))
+        if len(columns) != 1:
+            raise ValueError(f"Multiple age columns found {columns}")
+        x[columns[0]] = update_age
+        return x
 
     def add_patients(self,
                      conflicts: str or None = None,

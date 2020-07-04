@@ -1,10 +1,10 @@
-import mongoengine
-from config import GlobalConfig
+from ..utilities import parse_datetime
+from ..config import GlobalConfig
 from .event import Event
 from .measurement import Measurement, ComplexMeasurement, ContinuousMeasurement, DiscreteMeasurement
 from .critical_care import CriticalCare
-from utilities import parse_datetime
 from Levenshtein import distance as levenshtein_distance
+import mongoengine
 
 
 def _add_if_value(document,
