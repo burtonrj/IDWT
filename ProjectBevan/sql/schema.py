@@ -12,7 +12,7 @@ def _schema():
         List of string values containing SQL queries for each table
     """
     patients = """
-        CREATE TABLE [IF NOT EXISTS] Patients(
+        CREATE TABLE Patients(
         patient_id TEXT PRIMARY KEY,
         age INTEGER,
         gender TEXT DEFAULT "U",
@@ -22,7 +22,7 @@ def _schema():
         );
     """
     event = """
-            CREATE TABLE [IF NOT EXISTS] Events(
+            CREATE TABLE Events(
             patient_id TEXT PRIMARY KEY,
             component TEXT,
             event_type TEXT NOT NULL,
@@ -38,7 +38,7 @@ def _schema():
             );
         """
     measurements = """
-        CREATE TABLE [IF NOT EXISTS] Measurements(
+        CREATE TABLE Measurements(
         patient_id TEXT PRIMARY KEY,
         result_name TEXT NOT NULL,
         result_type TEXT NOT NULL,
@@ -52,7 +52,7 @@ def _schema():
         );
     """
     critical_care = """
-        CREATE TABLE [IF NOT EXISTS] CriticalCare(
+        CREATE TABLE CriticalCare(
         patient_id TEXT PRIMARY KEY,
         admission_date TEXT,
         admission_time REAL,
@@ -65,12 +65,12 @@ def _schema():
         );
     """
     comorbidities = """
-        CREATE TABLE [IF NOT EXISTS] Comorbidities(
+        CREATE TABLE Comorbidities(
         patient_id TEXT PRIMARY KEY,
         comorb_name TEXT
         );
     """
-    comorb_key = """CREATE TABLE [IF NOT EXISTS] ComorbKey(
+    comorb_key = """CREATE TABLE ComorbKey(
     comorb_name TEXT PRIMARY KEY
     );"""
     return [patients, event, measurements, critical_care, comorbidities, comorb_key]

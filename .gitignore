@@ -2,6 +2,8 @@ env
 ProjectBevan/env
 integration_tests
 .idea
+.ipynb_checkpoints
+*.ipynb
 *.csv
 *.xlsx
 *.xls
