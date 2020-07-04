@@ -724,7 +724,7 @@ class Populate:
                               result_date=result_datetime.get("date"),
                               result_time=result_datetime.get("time"),
                               request_source=request_source,
-                              ref_range = ref)
+                              ref_range=ref)
 
                 pd.DataFrame(record).to_sql(name="Measurements",
                                             con=self._config.db_connection,
@@ -760,7 +760,7 @@ class Populate:
         comorbs = self._remove_columns(comorbs, exclude_columns).melt(id_vars=self._id_column,
                                                                       value_name="status",
                                                                       var_name="comorb_name")
-        comorbs = comorbs[comorbs.status  == 1].drop_duplicates()
+        comorbs = comorbs[comorbs.status == 1].drop_duplicates()
         if comorbs.shape[0]:
             warn("No positive status for all comorbidities. This is unusual and should be checked. No data entry performed")
             return
@@ -805,4 +805,3 @@ class Populate:
                     curr.execute("INSERT INTO ComorbKey (comorb_name) VALUES (?)", x)
                     self._config.db_connection.commit()
         return comorbs
-
