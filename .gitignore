@@ -1,4 +1,5 @@
 env
+integration_tests
 .idea
 *.csv
 *.xlsx
