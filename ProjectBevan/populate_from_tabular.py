@@ -1,5 +1,5 @@
 from Levenshtein import distance as levenshtein_distance
-from nosql.patient import Patient
+from ProjectBevan.nosql.patient import Patient
 from config import GlobalConfig
 from collections import defaultdict
 from utilities import parse_datetime

@@ -1,4 +1,4 @@
-from nosql.setup import global_init
+from ProjectBevan.nosql.setup import global_init
 from mongoengine.connection import disconnect
 from datetime import datetime
 from warnings import warn
