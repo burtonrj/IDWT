@@ -12,12 +12,48 @@ import os
 import re
 
 
-def _pt_idx_multiprocess_task(files: dict, pop_inst, verbose: bool):
+def _load_dataframe(path: str,
+                    filetype: str,
+                    index: pd.Index or None = None,
+                    **kwargs) -> pd.DataFrame:
+    """
+    Load a tabular file as a Pandas DataFrame, with options to filter by index
+
+    Parameters
+    ----------
+    path: str
+        Path of file to load
+    filetype: str
+        Should be either: 'csv' or 'excel'
+    index: Pandas.Index (optional)
+        If given, returned DataFrame is filtered to return only given index
+    kwargs:
+        Additional keyword arguments passed to Pandas.DataFrame.read_csv/.read_excel call
+
+    Returns
+    -------
+    Pandas.DataFrame
+    """
+    try:
+        if filetype == "csv":
+            df = pd.read_csv(path, **kwargs)
+        elif filetype == "excel":
+            df = pd.read_excel(path, **kwargs)
+        else:
+            raise ValueError("filetype must be 'csv' or 'excel'")
+        if index is not None:
+            return df.loc[index]
+        return df
+    except pd.errors.ParserError as e:
+        raise ValueError(f'Failed parsing {path}; {e}')
+
+
+def _pt_idx_multiprocess_task(files: dict, id_column: str, verbose: bool):
     patients = defaultdict(dict)
     for name, properties in progress_bar(files.items(), verbose=verbose):
-        pt_ids = pop_inst._load_dataframe(path=properties.get("path"),
-                                          filetype=properties.get("type"),
-                                          usecols=[pop_inst._id_column])[pop_inst._id_column]
+        pt_ids = _load_dataframe(path=properties.get("path"),
+                                 filetype=properties.get("type"),
+                                 usecols=[id_column])[id_column]
         for _id in pt_ids.unique():
             patients[str(_id)][name] = pt_ids[pt_ids == _id].index
     return patients
@@ -72,42 +108,6 @@ class Populate:
         self._conflicts = value
 
     @staticmethod
-    def _load_dataframe(path: str,
-                        filetype: str,
-                        index: pd.Index or None = None,
-                        **kwargs) -> pd.DataFrame:
-        """
-        Load a tabular file as a Pandas DataFrame, with options to filter by index
-
-        Parameters
-        ----------
-        path: str
-            Path of file to load
-        filetype: str
-            Should be either: 'csv' or 'excel'
-        index: Pandas.Index (optional)
-            If given, returned DataFrame is filtered to return only given index
-        kwargs:
-            Additional keyword arguments passed to Pandas.DataFrame.read_csv/.read_excel call
-
-        Returns
-        -------
-        Pandas.DataFrame
-        """
-        try:
-            if filetype == "csv":
-                df = pd.read_csv(path, **kwargs)
-            elif filetype == "excel":
-                df = pd.read_excel(path, **kwargs)
-            else:
-                raise ValueError("filetype must be 'csv' or 'excel'")
-            if index is not None:
-                return df.loc[index]
-            return df
-        except pd.errors.ParserError as e:
-            raise ValueError(f'Failed parsing {path}; {e}')
-
-    @staticmethod
     def _parse_files(target_directory: str) -> dict:
         """
         Given a target directory, parse files in directory, filter to keep files that are tabular (either csv files or
@@ -153,9 +153,9 @@ class Populate:
         """
         self._vprint("----- Checking patient identifier column -----")
         for name, properties in progress_bar(self._files.items(), verbose=self._verbose):
-            temp_df = self._load_dataframe(properties.get("path"),
-                                           filetype=properties.get("type"),
-                                           nrows=3)
+            temp_df = _load_dataframe(properties.get("path"),
+                                      filetype=properties.get("type"),
+                                      nrows=3)
             assert id_column in temp_df.columns, f"{name} does not contain primary id column {id_column}"
         return id_column
 
@@ -198,7 +198,7 @@ class Populate:
         cores = cpu_count()
         self._vprint(f"...processing across {cores} cores")
         file_chunks = dict_chunks(self._files, size=math.ceil(len(self._files)/cores))
-        idx_func = partial(_pt_idx_multiprocess_task, pop_inst=self, verbose=self._verbose)
+        idx_func = partial(_pt_idx_multiprocess_task, id_column=self._id_column, verbose=self._verbose)
         pool = Pool(cores)
         patient_idx = pool.map(idx_func, file_chunks)
         return {pt_idx: idx for pt_idx in patient_idx for pt_idx, idx in pt_idx.items()}
@@ -220,9 +220,9 @@ class Populate:
         for name, properties in self._files.items():
             if name not in patient_idx.keys():
                 continue
-            df = self._load_dataframe(path=properties.get("path"),
-                                      filetype=properties.get("type"),
-                                      index=patient_idx.get(name))
+            df = _load_dataframe(path=properties.get("path"),
+                                 filetype=properties.get("type"),
+                                 index=patient_idx.get(name))
             yield name, df
 
     def _pt_search_multi(self,
@@ -694,8 +694,8 @@ class Populate:
 
         files = {name: properties for name, properties in self._files.items()
                  if filename.lower() in name.lower()}
-        return pd.concat([self._load_dataframe(path=properties.get("path"),
-                                               filetype=properties.get("type"))
+        return pd.concat([_load_dataframe(path=properties.get("path"),
+                                          filetype=properties.get("type"))
                           for properties in files.values()], ignore_index=True)
 
     @staticmethod
