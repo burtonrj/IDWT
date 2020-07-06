@@ -1,7 +1,8 @@
-import dateparser
+from itertools import islice
 from IPython import get_ipython
 from tqdm import tqdm
 from tqdm.notebook import tqdm as tqdm_notebook
+import dateparser
 import re
 
 
@@ -78,3 +79,9 @@ def parse_datetime(datetime: str) -> dict:
 
 def verbose_print(verbose: bool):
     return print if verbose else lambda *a, **k: None
+
+
+def dict_chunks(data, size=10000):
+    it = iter(data)
+    for i in range(0, len(data), size):
+        yield {k: data[k] for k in islice(it, size)}

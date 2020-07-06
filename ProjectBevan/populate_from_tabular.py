@@ -1,12 +1,26 @@
 from .nosql.patient import Patient
 from .config import GlobalConfig
-from .utilities import parse_datetime, progress_bar, verbose_print
+from .utilities import parse_datetime, progress_bar, verbose_print, dict_chunks
 from Levenshtein import distance as levenshtein_distance
+from multiprocessing import Pool, cpu_count
 from collections import defaultdict
+from functools import partial
 from warnings import warn
 import pandas as pd
+import math
 import os
 import re
+
+
+def _pt_idx_multiprocess_task(files: dict, pop_inst, verbose: bool):
+    patients = defaultdict(dict)
+    for name, properties in progress_bar(files.items(), verbose=verbose):
+        pt_ids = pop_inst._load_dataframe(path=properties.get("path"),
+                                          filetype=properties.get("type"),
+                                          usecols=[pop_inst._id_column])[pop_inst._id_column]
+        for _id in pt_ids.unique():
+            patients[str(_id)][name] = pt_ids[pt_ids == _id].index
+    return patients
 
 
 class Populate:
@@ -80,15 +94,18 @@ class Populate:
         -------
         Pandas.DataFrame
         """
-        if filetype == "csv":
-            df = pd.read_csv(path, **kwargs)
-        elif filetype == "excel":
-            df = pd.read_excel(path, **kwargs)
-        else:
-            raise ValueError("filetype must be 'csv' or 'excel'")
-        if index is not None:
-            return df.loc[index]
-        return df
+        try:
+            if filetype == "csv":
+                df = pd.read_csv(path, **kwargs)
+            elif filetype == "excel":
+                df = pd.read_excel(path, **kwargs)
+            else:
+                raise ValueError("filetype must be 'csv' or 'excel'")
+            if index is not None:
+                return df.loc[index]
+            return df
+        except pd.errors.ParserError as e:
+            raise ValueError(f'Failed parsing {path}; {e}')
 
     @staticmethod
     def _parse_files(target_directory: str) -> dict:
@@ -178,13 +195,13 @@ class Populate:
         # Search through every file and generate a dictionary of unique patient indexes
         patients = defaultdict(dict)
         self._vprint("----- Caching patient identifiers -----")
-        for name, properties in progress_bar(self._files.items(), verbose=self._verbose):
-            pt_ids = self._load_dataframe(path=properties.get("path"),
-                                          filetype=properties.get("type"),
-                                          usecols=[self._id_column])[self._id_column]
-            for _id in pt_ids.unique():
-                patients[str(_id)][name] = pt_ids[pt_ids == _id].index
-        return patients
+        cores = cpu_count()
+        self._vprint(f"...processing across {cores} cores")
+        file_chunks = dict_chunks(self._files, size=math.ceil(len(self._files)/cores))
+        idx_func = partial(_pt_idx_multiprocess_task, pop_inst=self, verbose=self._verbose)
+        pool = Pool(cores)
+        patient_idx = pool.map(idx_func, file_chunks)
+        return {pt_idx: idx for pt_idx in patient_idx for pt_idx, idx in pt_idx.items()}
 
     def _load_pt_dataframe(self, patient_id: str):
         """
@@ -495,6 +512,8 @@ class Populate:
             for filename, df in self._load_pt_dataframe(patient_id=patient_id):
                 columns = self._filter_columns(columns=df.columns,
                                                regex_terms=column_search_terms)
+                if len(columns) == 0:
+                    continue
                 if len(columns) != 1:
                     raise ValueError(f"Multiple age columns found {columns}")
                 file_values = df[columns].values.flatten()
@@ -870,3 +889,4 @@ class Populate:
                     curr.execute("INSERT INTO ComorbKey (comorb_name) VALUES (?)", x)
                     self._config.db_connection.commit()
         return comorbs
+
