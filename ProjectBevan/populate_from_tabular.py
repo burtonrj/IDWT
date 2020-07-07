@@ -1,13 +1,12 @@
 from .nosql.patient import Patient
 from .config import GlobalConfig
-from .utilities import parse_datetime, progress_bar, verbose_print, dict_chunks
+from .utilities import parse_datetime, progress_bar, verbose_print
 from Levenshtein import distance as levenshtein_distance
 from multiprocessing import Pool, cpu_count
 from collections import defaultdict
 from functools import partial
 from warnings import warn
 import pandas as pd
-import math
 import os
 import re
 
@@ -48,15 +47,12 @@ def _load_dataframe(path: str,
         raise ValueError(f'Failed parsing {path}; {e}')
 
 
-def _pt_idx_multiprocess_task(files: dict, id_column: str, verbose: bool):
-    patients = defaultdict(dict)
-    for name, properties in progress_bar(files.items(), verbose=verbose):
-        pt_ids = _load_dataframe(path=properties.get("path"),
-                                 filetype=properties.get("type"),
-                                 usecols=[id_column])[id_column]
-        for _id in pt_ids.unique():
-            patients[str(_id)][name] = pt_ids[pt_ids == _id].index
-    return patients
+def _pt_idx_multiprocess_task(file_properties: tuple, id_column: str):
+    filename, file_properties = file_properties
+    pt_ids = _load_dataframe(path=file_properties.get("path"),
+                             filetype=file_properties.get("type"),
+                             usecols=[id_column])[id_column]
+    return {str(_id): {filename: pt_ids[pt_ids == _id].index} for _id in pt_ids}
 
 
 class Populate:
@@ -193,15 +189,18 @@ class Populate:
             Nested dictionary of unique patients and corresponding file indexes
         """
         # Search through every file and generate a dictionary of unique patient indexes
-        patients = defaultdict(dict)
         self._vprint("----- Caching patient identifiers -----")
         cores = cpu_count()
         self._vprint(f"...processing across {cores} cores")
-        file_chunks = dict_chunks(self._files, size=math.ceil(len(self._files)/cores))
-        idx_func = partial(_pt_idx_multiprocess_task, id_column=self._id_column, verbose=self._verbose)
+        idx_func = partial(_pt_idx_multiprocess_task, id_column=self._id_column)
         pool = Pool(cores)
-        patient_idx = pool.map(idx_func, file_chunks)
-        return {pt_idx: idx for pt_idx in patient_idx for pt_idx, idx in pt_idx.items()}
+        patient_idx_list = progress_bar(pool.imap(idx_func, self._files.items()), verbose=self._verbose, total=len(self._files))
+        patient_idx = defaultdict(dict)
+        for pt_file_idx in patient_idx_list:
+            for pt, file_idx in pt_file_idx.items():
+                for filename, idx in file_idx.items():
+                    patient_idx[pt][filename] = idx
+        return patient_idx
 
     def _load_pt_dataframe(self, patient_id: str):
         """
